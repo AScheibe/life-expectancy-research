@@ -1,0 +1,390 @@
+---
+title: "The Effects of Education and GNI on Life Expectancy"
+output:
+html_document: default
+---
+
+**Introduction: Alexander Scheibe and Addison Atkin**
+
+**Background: Alexander Scheibe Ankit Joju**
+
+**Analysis: Alexander Scheibe**
+
+**Discussion: Alexander Scheibe and Will Salton**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning = FALSE,
+                      cache=TRUE, autodep=TRUE, cache.comments=FALSE)
+library(tidyverse)
+library(scales)
+library(modelr)
+source("scripts/viridis.R")
+source("scripts/ggprob.R")
+```
+
+```{r, echo = FALSE}
+library(kableExtra)
+unpop = read_csv("data/un-population.csv")
+unpop = unpop %>% 
+  mutate(hd_group = case_when(rank <= 66 ~ "1. Very High Human Development", rank > 66 & rank <= 119 ~ "2. High Human Development", rank > 119 & rank <= 156 ~ "3. Medium Human Development", rank > 156  ~ "4. Low Human Development"))
+
+theme_bluewhite <- function (base_size = 11, base_family = "") {
+    theme_bw() %+replace% 
+    theme(
+      panel.grid.major  = element_line(color = "white"),
+      panel.background = element_rect(fill = "lightblue"),
+      panel.border = element_rect(color = "lightblue", fill = NA),
+      axis.line = element_line(color = "lightblue"),
+      axis.ticks = element_line(color = "lightblue"),
+      axis.text = element_text(color = "steelblue")
+      )
+}
+```
+# Introduction
+
+There are limiting factors that play a role in life expectancy. We identified knowledge and wealth as factors that are easily measured and that are essential in an individual’s ability to take care of themselves. For example, differences in the educational process are prevalent from country to country, naturally leading to the question, does education have an impact on the life expectancy of a nation? Additionally, it is not news that wealth around the world is distributed unevenly, but how does this wealth distribution affect the average life expectancy?  In this report, we examine changes in gross national income (GNI) per capita and mean years of schooling and compare those factors to the life expectancy of all United Nations recognized countries to display trends that indicate a correlation between GNI per capita and life expectancy, and mean years of schooling and life expectancy. We hope to directly answer two questions: *How does gross national income per capita affect life expectancy?* *How do mean years of schooling affect life expectancy?* We will implement a linear regression model to justify our claims. An increase in years of education and a higher GNI per capita directly lead to a higher life expectancy overall.
+
+# Background 
+
+For this report, our data is derived from the United Nations Human Development Report. The data was collected throughout 2019, (or the most recent year available) and compiled at the start of 2020.^[United Nations Human Development Report] The Human Development Report is a set of data detailing the human development index (HDI), a factor the United Nations uses to determine how developed a nation is based on multiple factors including GNI per capita, mean years of education, and life expectancy.^[ALNAP] This data all directly details the standard of living in various countries around the world. All this data is free to use and openly accessible to anyone on their website, under the [U.N. Human Development Record Portal](https://hdr.undp.org/en/composite/HDI). The Human Development Record data directly reflects the characteristics of individual nations, and by extension, the citizens of those nations. It was collected from a multitude of international data agencies representing their respective nations with the mandate, resources, and expertise to collect national data on specific indicators all under the direction of the United Nations.^[United Nations Human Development Report] 
+
+The key variables of the data are: Country name (Qualitative/Categorical), Human Development Index (Quantitative), Life Expectancy at Birth measured by years (Quantitative), Expected Years of Schooling (Quantitative), Mean Years of Schooling (Quantitative), and Gross National Income Per Capita measured in USD (Quantitative). There are 189 rows of data that are fully complete, with all but the Country data being Quantitative. In other words, the data is in immaculate shape with no data points missing for all 189 United Nations recognized countries. We will not be including data from other territories in our analysis due to a significant lack of data collected from these regions. We chose these data points as they directly address both of our questions at hand as we perform our regression analysis, with the human development index being included in our visualizations in order to provide further insight. 
+
+```{r, echo = FALSE}
+library(kableExtra)
+
+un_data_vars = tibble(
+  Name = c("Country Name", "Human Development Index", "Life Expectancy at Birth (Years) ", "Expected Years of Schooling", "Mean Years of Schooling", "Gross National Income Per Capita (USD)"),
+  Description = c("Country Name (String/Qualitative)",
+                  "Human Development Index (Decimal/Quantitative)",
+                  "Life Expectancy at Birth in Years (Decimal/Quantitative)",
+                  "Expected Years of Schooling (Decima/Quantitative)",
+                  "Mean Years of Schooling (Decimal/Quantitative)",
+                  "Gross National Income Per Capita (USD/Quantitative)"
+                  ))
+
+un_data_vars %>% 
+  kable(caption = "Key Variables from the Official UN Human Develop Index Dataset") %>% 
+  kable_styling(position = "left", full_width = FALSE,
+                bootstrap_options = c("striped"))
+```
+
+The remainder of the report will examine mean years of education and the GNI per capita in order to assess the differences in life expectancy amongst nations and determine if there is a statistically significant correlation between changes in life expectancy and GNI per capita or mean years of education.
+
+
+# Analysis
+
+## Life Expectancy Differences
+```{r, echo = FALSE}
+un_summary = unpop %>% 
+  
+  group_by(hd_group) %>% 
+  summarise(mean_schooling_years = mean(mean_schooling_years), gni = mean(gni), life_expectancy = mean(life_expectancy))
+
+ggplot(un_summary, aes(x = hd_group, fill = hd_group, y = life_expectancy)) +
+  guides(fill = guide_legend(title = "U.N. Human Development Grouping")) +
+  geom_col(width = 0.3, position = position_dodge2(preserve = "single")) + 
+  theme_bw() +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ylab("Average Life Expectancy") +
+  ggtitle("Average Life Expectancy Among UN Recognized Countries", "Countries Grouped by Human Development") 
+```
+
+It can be seen here that life expectancy varies greatly among the nations of 
+these 4 categories specified by the UN. Our goal moving forward is to analyze GNI 
+per capita and mean years of education to get a better sense of why life expectancy varies.
+
+
+## Analysis of Life Expectancy vs. Years of Schooling
+
+
+#### Correlation 
+
+```{r, echo = FALSE}
+r = unpop %>%  
+    summarize(r = cor(mean_schooling_years, life_expectancy)) %>% 
+    pull(r)
+```
+
+The correlation coefficient, or 'r' is calculated using the following formula:
+$$
+r = \mathsf{Corr}(x,y) = \frac{1}{n-1}\sum_{i=1}^n
+\left(\frac{x_i - \bar{x}}{s_x} \right)
+\left(\frac{y_i - \bar{y}}{s_y} \right)
+$$
+$$
+r = 0.768
+$$
+Since r = 0.768 which is between 0.5 and 1, there is said to be a high degree of correlation between mean years of schooling and life expectancy.
+
+With this, we move on to developing an estimated model. 
+
+#### Inference for Slope Parameter
+
+We will carry out the following hypothesis test:
+$$
+H_0:  \beta_1 = 0 \\
+H_a:  \beta_1 \neq 0
+$$
+We test the null hypothesis that our slope parameter of is 0, which would suggest that there is not a linear relationship between life expectancy and mean years of schooling.
+
+We use the following t-statistic:
+$$
+T = \frac{1.838324 - 0}{0.1120636} = 16.40429
+$$
+
+Which allows us to calculate the p-value:
+$$
+P = 4.71465e-38
+$$
+```{r}
+lm = lm(life_expectancy ~ mean_schooling_years, data = unpop)
+
+t = coef(summary(lm))[2, "t value"]
+
+
+p = pt(t, 187, lower.tail = FALSE) * 2
+
+tstat = (coef(summary(lm))[2]-1)/coef(summary(lm))[2, "Std. Error"]
+
+p = pt(tstat, 187, lower.tail = FALSE) * 2
+```
+As seen, since our p-value is so small, (significantly less than 0.05), there is evidence to suggest that we can reject the null hypothesis, which therefore suggests that a model based on a linear relationship would be appropriate (p-value = 4.71465e-38, two-sided t-test).
+
+
+#### Estimated Regression Model
+
+- $Y_i$ is Life Expectancy (in years)
+- $X_i$ is Mean Years of Schooling 
+- $\beta_0$ is the intercept of our fitted line 
+- $\beta_1$ is the slope of our fitted line
+```{r, echo = FALSE}
+cf = format(coef(lm(life_expectancy ~ mean_schooling_years, data = unpop)), scientific = FALSE)
+```
+
+$$
+Y_i = \beta_0 + \beta_1 X_i
+$$
+
+Using the built in r function lm(), we estimate our model to be
+
+$$
+Y_i = 56.673 + 1.84X_i
+$$
+
+This model can be used to estimate the life expectancy based on mean years of schooling (that is, mean years of schooling is inputted). The model can be graphed as a fitted line through the data, as shown below.
+
+```{r, echo = FALSE, fig.cap = "**Life Expectancy vs. Mean Years of Schooling** Each point represents an individual nation recognized by the United Nations and is colored to reflect the United Nations human development classification. The blue curve shows a smooth trend. The red curve represents the fitted line of our linear regression model"}
+ggplot(unpop, aes(x = mean_schooling_years, y = life_expectancy)) +
+  geom_point(aes(color = hd_group)) +
+  guides(color = guide_legend(title = "U.N. Human Development Grouping")) +
+  geom_smooth(se = FALSE) + 
+  geom_smooth(se = FALSE, method = "lm", color = "red") +
+  scale_x_continuous(breaks = seq(0, 14, by=2)) +  
+  scale_y_continuous(breaks = seq(50, 80, by=10)) +
+  ggtitle("Life Expectancy vs. Years of Schooling Among U.N. Recognized Countries", paste("r =",round(r,3))) +
+  xlab("Mean Years of Schooling") +
+  ylab("Life Expectancy (In Years)") +
+  theme_light()
+```
+
+With the strong correlation and seemingly sound linear fit, it appears as though there is a strong linear relationship between mean years of schooling and life expectancy. Based on our model, we can see that as the mean years of schooling increases, life expectancy increases. Moving forward, we will work to determine the accuracy and validity of our linear model. 
+
+#### Residuals 
+
+In a linear model, it is assumed that residuals in our data follow a constant 
+variance and follow a normal distribution. We will now examine if these factors 
+hold true using a residual plot and a histogram of our residuals.
+
+```{r, echo = FALSE, fig.cap = "**Mean Years of Schooling Residuals** Each point represents the difference between the estimated value based on our model and the value derived from the real world data. The blue smooth curve shows the trend in the plot."}
+cf = format(coef(lm(life_expectancy ~ mean_schooling_years, data = unpop)), scientific = FALSE)
+
+df_lm = lm(life_expectancy ~ mean_schooling_years, data = unpop)
+
+res = resid(df_lm)
+res_df = data.frame(res) %>% 
+  mutate(x = unpop$mean_schooling_years)
+
+ggplot(res_df, aes(x = x, y = res)) +
+  geom_point() +
+  scale_x_continuous(trans='log10') +  
+  geom_smooth(se = FALSE) +
+  ggtitle("Residual Plot for Mean Years of Schooling and Life Expectancy") +
+  geom_hline(aes(yintercept = 0), color = "red", linetype = "dashed") +
+  xlab("Mean Years of Schooling") +
+  ylab("Residuals") + 
+  theme_bw()
+```
+The residual spread on the y-axis appears to be pretty consistent. Although there appears increased spread on the y-axis 
+towards the first half of the plot, the smooth curve remains near y = 0 throughout. 
+
+```{r, echo = FALSE, fig.cap= "**Residual Normal Distribution Analysis** The black curve represents the distribution of residuals. The blue curve represents the expected normal distribution for comparison sake."}
+resid_mean = mean(res_df$res)
+resid_sd = sd(res_df$res)
+
+ggplot(res_df, aes(x = res)) +
+  geom_density() +
+  geom_norm_density(resid_mean, resid_sd, color="blue") +
+  xlab("Residuals") +
+  ylab("Density") +
+  ggtitle("Residual Normal Distribution Analysis (Mean Years of Education)") +
+  theme_bluewhite()
+```
+
+The residuals form a shape resembling a normal distribution. There are a significant amount
+of outliers on the left side with a slight skew to the right. Overall though, given our limited data set, this distribution does appear to be quite normal.
+
+## Analysis of Life Expectancy vs. Gross National Income
+
+#### Correlation 
+
+```{r, echo = FALSE}
+r = unpop %>%  
+    summarize(r = cor(gni, life_expectancy)) %>% 
+    pull(r)
+```
+
+Again, we calculate the correlation coefficent. 
+
+$$
+r = 0.696
+$$
+Since r = 0.696 which is between 0.5 and 1, there is said to be a high degree of correlation between GNI per capita and life expectancy.
+
+With this, we move on to developing an estimated model. 
+
+#### Inference for Slope Parameter
+
+We will carry out the following hypothesis test:
+$$
+H_0:  \beta_1 = 0 \\
+H_a:  \beta_1 \neq 0
+$$
+We test the null hypothesis that our slope parameter is 0, which would suggest a linear relationship between life expectancy and gross national income per capita would not be suitable.
+
+We use the following t-statistic:
+$$
+T = \frac{12.32723 - 0}{0.5831456} = 21.1392
+$$
+
+Which allows us to calculate the p-value:
+$$
+P = 1.865629e-51
+$$
+
+```{r}
+lm = lm(life_expectancy ~ log(gni,10), data = unpop)
+
+t = coef(summary(lm))[2, "t value"]
+
+p = pt(t, 187, lower.tail = FALSE) * 2
+
+tstat <- (coef(summary(lm))[2])/coef(summary(lm))[2, "Std. Error"]
+
+p = pt(tstat, 187, lower.tail = FALSE) * 2
+
+```
+
+As seen, since our p-value is so small, (significantly less than 0.05), there is evidence to suggest that we can reject the null hypothesis, which therefore suggests that a model based on a linear relationship would be appropriate (p-value = 1.865629e-51, two-sided t-test).
+
+
+#### Estimated Regression Model
+
+- $Y_i$ is Gross National Income Per Capita
+- $X_i$ is GNI per capita 
+- $\beta_0$ is the intercept of our fitted line 
+- $\beta_1$ is the slope of our fitted line
+```{r, echo = FALSE}
+cf = format(coef(lm(life_expectancy ~ gni, data = unpop)), scientific = FALSE)
+```
+
+$$
+Y_i = \beta_0 + \beta_1 X_i
+$$
+
+Using the built in r function lm(), we estimate our model to be
+
+$$
+Y_i = 67.817 + 0.000242X_i
+$$
+
+This model can be used to estimate the life expectancy based on GNI per capita (that is, GNI per capita is inputted). The model can be graphed as a fitted line through the data, as shown below. 
+
+```{r, echo = FALSE, fig.cap = "**Life Expectancy vs. GNI Per Capita** Each point represents an individual nation recognized by the United Nations and is colored to reflect the United Nations human development classification. The blue curve shows a smooth trend through the data. The red curve represents the fitted line of our linear regression model"}
+ggplot(unpop, aes(x = gni, y = life_expectancy)) +
+  geom_point(aes(color = hd_group)) +
+  guides(color = guide_legend(title = "U.N. Human Development Grouping")) +
+  geom_smooth(se = FALSE) + 
+  geom_smooth(se = FALSE, method = "lm", color = "red") + 
+  scale_x_continuous(trans='log10') +  
+  scale_y_continuous(breaks = seq(50, 80, by=10)) +
+  ggtitle("Life Expectancy vs. Gross National Income Per Capita Among U.N. Recognized Countries", paste("r =",round(r,3))) +
+  xlab("GNI Per Capita") +
+  ylab("Life Expectancy (In Years)") +
+  theme_light()
+```
+With the strong correlation and seemingly sound linear fit, it appears as though there is a strong linear relationship between GNI Per Capita and Life Expectancy. Based on our model, we can see that as GNI per capita increases, life expectancy increases. Moving forward, we will work to determine the accuracy and validity of our linear model. 
+
+#### Residuals
+
+In a linear model, it is assumed that residuals in our data follow a constant 
+variance and follow a normal distribution. We will now examine if these factors 
+hold true using a residual plot and a histogram of our residuals.
+
+```{r, echo = FALSE, fig.cap = "**GNI Per Capita Residuals** Each point represents the difference between the estimated value based on our model and the value derived from the real world data. The blue smooth curve shows the trend in the plot."}
+df_lm = lm(life_expectancy ~ log(gni, 10), data = unpop)
+
+res = resid(df_lm)
+
+res_df = data.frame(res) %>% 
+  mutate(x = (unpop$gni)) 
+
+ggplot(res_df, aes(x = x, y = res)) +
+  geom_point() +
+  scale_x_continuous(trans='log10') +  
+  geom_smooth(se = FALSE) +
+  geom_hline(aes(yintercept = 0), color = "red", linetype = "dashed") +
+  ggtitle("Residual Plot for GNI Per Capita and Life Expectancy") +
+  xlab("GNI Per Capita") +
+  ylab("Residuals") + 
+  theme_bw()
+```
+
+The residual spread on the y-axis appears to be pretty consistent. Although there appears increased spread on the y-axis 
+towards the first half of the plot, the smooth curve remains tightly around y = 0.
+
+```{r, echo = FALSE, fig.cap= "**Residual Normal Distribution Analysis** The black curve represents the distribution of residuals. The blue curve represents the expected normal distribution for comparison sake."}
+resid_mean = mean(res_df$res)
+resid_sd = sd(res_df$res)
+
+ggplot(res_df, aes(x = res)) +
+  geom_density() +
+  geom_norm_density(resid_mean, resid_sd, color="blue") +
+  xlab("Residuals") +
+  ylab("Density") +
+  ggtitle("Residual Normal Distribution Analysis (GNI Per Capita)") +
+  theme_bluewhite()
+```
+
+As seen, the residuals form a shape resembling a normal distribution. There are a significant amount
+of outliers on the left side with a slight skew to the right. Overall though, given our limited data set, this distribution does appear to be quite normal.
+
+# Discussion
+
+Our two research questions posed were: *How does education affect life expectancy?* *How does GNI per capita affect life expectancy?* 
+
+After calculating an r value (the correlation coefficient) and looking at the graph for Life Expectancy vs. Mean Years of Schooling, we observed that there is a strong correlation between mean years of schooling and life expectancy. A similar trend is also seen in life expectancy and gross national income per capita. There again appears to be a strong correlation after calculating the value for r and plotting the data on a graph. 
+
+We then went on to develop a linear regression model for each question after performing our hypothesis test which confirmed a linear model could be used for our data. Based on these models, when a higher mean years of schooling is inputted or GNI per capita is inputted, a higher life expectancy is returned. Based on this alone, we may be able to predict that as the mean years of schooling increases, life expectancy increases. This can also be seen in the graphs where our red lines are representative of our fitted model. All said though, there are some shortcomings in these models that need to be addressed. 
+
+For potential future work, it may be beneficial to implement a different model, potentially a power law model, in order to more accurately predict and model the effects on life expectancy. Or, at the very least, the linear regression model should be heavily altered. While the variance in our residuals may have been kept in check, simply looking at the graph shows that we are very often off by as much as 10-15 years. When talking about a variable like life expectancy which only has an average range of about 60-80 years, being off by 10-15 years as much as we were is unacceptable for our standards.  That said though, our residual normality test looked promising. While there were some outliers, given the limited data we had, the residuals did appear to form in such a way that resembled a normal distribution. There was defintely some skew in the graphs, with the mode in the mean years of education residual distribution being at 2.5. While promising, the residuals definitely could have been improved by implementing the methods previously mentioned. 
+
+Additionally, it might be helpful to choose a different metric for measuring wealth. GNI per capita does show monetary wealth, but it is possible it can be skewed. This is because it measures income earned from a country and divides it by the country's population. This could possibly be a problem in some countries where a majority of the wealth resides in only a very small percentage of the population because the rest of the population would have comparatively a small amount. Another metric that could be changed would be mean years of schooling. While this is a helpful metric, it fails to recognize that some countries' schooling systems are inherently better than others, due to factors such as having more schools or better standardized public education. 
+
+For further research, we thought of further analyzing GNI per capita and life expectancy against each other, or together at the same time in order to get a better understanding as to how multiple positive improvements in an individual’s life affects life expectancy, if at all. 
+ 
+Based on the evidence we provided through our analysis, there is a clear relationship that suggests a higher GNI per capita and greater mean years of education leads to a higher life expectancy. There was a very strong correlation coefficient between GNI per capita/mean years of education and life expectancy, and our model displayed that as GNI per capita increases and mean years of education increases, life expectancy increases. Even though our residuals did tend to be further off than we'd like, they did maintain fairly constant variance and displayed a high degree of normality when graphed as a distribution. While there are potential shortcomings in our report as noted, there does appear to be clear evidence that there is a relationship suggesting a higher GNI per capita and/or more years of education leads to a higher life expectancy.
+
+# References
